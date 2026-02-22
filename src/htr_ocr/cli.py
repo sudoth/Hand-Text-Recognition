@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pathlib import Path
 
 import fire
@@ -57,12 +55,6 @@ class HTRCLI:
             strategy = str(cfg.split.strategy)
             if strategy == "writer":
                 group_col = "writer_id"
-                if df[group_col].isna().any():
-                    missing = int(df[group_col].isna().sum())
-                    raise ValueError(
-                        f"writer_id missing for {missing} rows. "
-                        "Rebuild manifest with data.forms_path pointing to ascii/forms.txt."
-                    )
             elif strategy == "form":
                 group_col = "form_id"
             else:

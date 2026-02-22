@@ -1,10 +1,9 @@
-from __future__ import annotations
-
 import contextlib
 import os
 import platform
+import subprocess
 import sys
-from dataclasses import dataclass
+from omegaconf import OmegaConf
 from pathlib import Path
 from typing import Iterator
 
@@ -13,18 +12,7 @@ import mlflow
 from htr_ocr.config_loader import cfg_to_flat_dict, project_root
 
 
-@dataclass
-class MlflowCfg:
-    enabled: bool
-    tracking_uri: str
-    experiment: str
-    tags: dict[str, str]
-
-
 def _get_git_commit() -> str:
-    # Без зависимости от gitpython
-    import subprocess
-
     try:
         out = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=project_root())
         return out.decode().strip()
@@ -40,7 +28,7 @@ def setup_mlflow(cfg: dict) -> None:
     if tracking_uri:
         mlflow.set_tracking_uri(tracking_uri)
 
-    mlflow.set_experiment(cfg.get("experiment", "htr-diploma"))
+    mlflow.set_experiment(cfg.get("experiment", "htr"))
 
 
 @contextlib.contextmanager
@@ -63,15 +51,14 @@ def mlflow_run(run_name: str, cfg, extra_tags: dict[str, str] | None = None) -> 
     tags.setdefault("platform", platform.platform())
 
     with mlflow.start_run(run_name=run_name, tags=tags):
-        # логируем всю конфигурацию как параметры (в плоском виде)
+        # логируем всю конфигурацию как параметры в плоском виде
         flat = cfg_to_flat_dict(cfg)
         mlflow.log_params(_flatten_for_mlflow(flat))
 
-        # сохраняем конфиг как artifact
+        # сохраняем конфиг как артефакт
         tmp = Path(".cache_mlflow")
         tmp.mkdir(exist_ok=True)
         cfg_path = tmp / "config_resolved.yaml"
-        from omegaconf import OmegaConf
 
         OmegaConf.save(config=cfg, f=str(cfg_path))
         mlflow.log_artifact(str(cfg_path), artifact_path="config")

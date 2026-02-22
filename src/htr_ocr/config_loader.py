@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +6,7 @@ from omegaconf import DictConfig
 
 
 def project_root() -> Path:
-    # .../src/htr_ocr/config_loader.py == project root
+    # .../src/htr_ocr/config_loader.py это корень проекта
     return Path(__file__).resolve().parents[2]
 
 

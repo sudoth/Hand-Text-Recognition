@@ -23,14 +23,14 @@
 uv sync
 ```
 
-### 2) Сборка manifest
+### 2) Сборка манифеста
 ```bash
 uv run htr make_manifest
 ```
 
 Результат: `data/processed/manifest.parquet`.
 
-### 3) Сплиты train/val/test
+### 3) train/val/test
 
 **Writer-independent:**
 ```bash

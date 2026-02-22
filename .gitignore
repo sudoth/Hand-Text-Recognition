@@ -22,3 +22,6 @@ __pycache__/
 
 # MLflow
 *.db
+
+dump.py
+a.txt
