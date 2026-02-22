@@ -8,7 +8,7 @@ forms_path: ${data.raw_dir}/ascii/forms.txt
 processed_dir: data/processed
 manifest_path: ${data.processed_dir}/manifest.parquet
 
-# Фильтрация по качеству (как в IAM: ok / err)
+# Фильтрация по качеству (в IAM: ok / err)
 keep_status: ["ok"]
 
 # Ограничение размера для дебага (0 = без лимита)

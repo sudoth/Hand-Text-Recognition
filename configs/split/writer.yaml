@@ -1,3 +1,4 @@
+# @package split
 strategy: writer
 seed: 42
 train: 0.80

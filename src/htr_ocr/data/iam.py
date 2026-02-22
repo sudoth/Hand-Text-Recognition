@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -24,10 +22,10 @@ class IamLineRecord:
 
 def parse_lines_txt(lines_txt_path: str | Path, keep_status: list[str] | None = None) -> list[IamLineRecord]:
     """
-    Формат:
-      line_id status graylevel n_components x y w h transcription
+    Парсим lines.txt в list[IamLineRecord]
+    Формат: line_id status graylevel n_components x y w h transcription
 
-    transcription в IAM часто использует '|' вместо пробела.
+    в IAM используется '|' вместо пробела. Пропускаем комментарии
     """
     keep_status = keep_status or ["ok"]
 
@@ -70,12 +68,11 @@ def parse_lines_txt(lines_txt_path: str | Path, keep_status: list[str] | None = 
 
 def parse_forms_txt(forms_txt_path: str | Path) -> dict[str, str]:
     """
-    Формат (пример из IAM):
-      a01-000u 000 2 prt 7 5 52 36
+    Парсим forms.txt в dict[str, str]
+    Формат: a01-000u 000 2 prt 7 5 52 36
 
-    Нам нужен только (form_id, writer_id). Парсер tolerant:
-    - пропускает комментарии '#'
-    - берёт первые 2 токена.
+    Нужен только (form_id, writer_id) для правильного сплита.
+    Берём первые 2 токена и пропускаем комментарии.
     """
     mapping: dict[str, str] = {}
     p = Path(forms_txt_path)
@@ -96,8 +93,8 @@ def parse_forms_txt(forms_txt_path: str | Path) -> dict[str, str]:
 
 def index_line_images(images_root: str | Path, exts: Iterable[str] = (".png", ".jpg", ".jpeg")) -> dict[str, Path]:
     """
-    IAM может быть разложен по папкам по-разному (lines/a01/a01-000u/...),
-    поэтому вместо жёсткого правила мы один раз индексируем все картинки.
+    IAM разложен по папкам по-разному (lines/a01/a01-000u/...),
+    поэтому вместо жёсткого правила мы один раз индексируем все картинки их же назваением.
     """
     images_root = Path(images_root)
     mapping: dict[str, Path] = {}
@@ -113,7 +110,6 @@ def index_line_images(images_root: str | Path, exts: Iterable[str] = (".png", ".
         if p.suffix.lower() not in exts_l:
             continue
         stem = p.stem
-        # В IAM stem обычно уникален. Если встретились дубли — оставим первый.
         mapping.setdefault(stem, p)
 
     return mapping
@@ -123,30 +119,32 @@ def build_manifest(
     raw_dir: str | Path,
     images_subdir: str,
     annotations_path: str | Path,
-    forms_path: str | Path | None,
+    forms_path: str | Path,
     keep_status: list[str] | None,
     limit: int = 0,
 ) -> pd.DataFrame:
     """
-    Возвращает DataFrame с колонками:
-      line_id, form_id, writer_id (если есть), image_path, text, width, height, ...
+    Делаем pd.DataFrame с колонками:
+      line_id, form_id, writer_id, image_path, text, width, height,
+      graylevel, n_components, bbox_x, bbox_y, bbox_w, bbox_h,
 
     images_subdir — путь относительно raw_dir, где лежат изображения строк.
     """
     raw_dir = Path(raw_dir)
     images_root = raw_dir / images_subdir
 
+    # parse_lines_txt
     records = parse_lines_txt(annotations_path, keep_status=keep_status)
     if limit and limit > 0:
         records = records[:limit]
 
-    # Индексация картинок
+    # index_line_images
+    img_index: dict[str, Path] = {}
     img_index = index_line_images(images_root)
 
-    # writer_id (если forms.txt доступен)
+    # parse_forms_txt
     forms_map: dict[str, str] = {}
-    if forms_path is not None:
-        forms_map = parse_forms_txt(forms_path)
+    forms_map = parse_forms_txt(forms_path)
 
     rows: list[dict] = []
 
@@ -154,8 +152,7 @@ def build_manifest(
         img_path = img_index.get(rec.line_id)
         if img_path is None:
             raise FileNotFoundError(
-                f"Image not found for line_id={rec.line_id}. "
-                f"Searched under images_root={images_root} by filename stem."
+                f"Image not found for line_id={rec.line_id}, images_root={images_root}"
             )
 
         with Image.open(img_path) as im:

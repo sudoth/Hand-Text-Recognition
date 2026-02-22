@@ -1,4 +1,5 @@
 defaults:
+  - _self_
   - data: iam
   - preprocess: default
   - mlflow: local

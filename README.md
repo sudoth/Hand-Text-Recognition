@@ -32,20 +32,20 @@ uv run htr make_manifest
 
 ### 3) Сплиты train/val/test
 
-**Writer-independent (рекомендуется):**
+**Writer-independent:**
 ```bash
-uv run htr make_splits split.strategy=writer
+uv run htr make_splits split=writer
 ```
 
 **Form-independent:**
 ```bash
-uv run htr make_splits split.strategy=form
+uv run htr make_splits split=form
 ```
 
 Результат: `data/processed/train.csv`, `val.csv`, `test.csv`.
 
 ## CLI + Hydra overrides
-Мы используем **Fire** как CLI оболочку, а параметры задаём через **Hydra overrides**:
+**Fire** как CLI, параметры через **Hydra overrides**:
 
 `uv run htr <command> <override1> <override2> ...`
 `uv run htr make_manifest data.raw_dir=data/raw preprocess.height=128`
