@@ -1,0 +1,6 @@
+enabled: true
+tracking_uri: ""   # пусто => ./mlruns
+experiment: "htr"
+
+tags:
+  project: "htr"

@@ -1,0 +1,8 @@
+strategy: form   # form | writer
+seed: 42
+train: 0.80
+val: 0.10
+test: 0.10
+
+# Если strategy=form то группировка по form_id = первые 2 сегмента id (например a01-000u)
+form_parts: 2

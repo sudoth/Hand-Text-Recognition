@@ -1,0 +1,9 @@
+defaults:
+  - data: iam
+  - preprocess: default
+  - mlflow: local
+
+# Команда make_manifest
+command:
+  name: make_manifest
+

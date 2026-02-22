@@ -1,13 +1,24 @@
-# Python-generated files
+# data
+/data/
+!/data/.gitkeep
+
+# outputs
+/mlruns/
+/runs/
+/.cache_mlflow/
+
+# python
 __pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.dist/
+.venv/
 
-# Virtual environments
-.venv
+# IDE
+.vscode/
+.idea/
 
-# Data sepcific
-*.png
+# MLflow
+.db

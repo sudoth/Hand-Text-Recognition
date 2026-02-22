@@ -1,0 +1,9 @@
+strategy: writer
+seed: 42
+train: 0.80
+val: 0.10
+test: 0.10
+
+# Для writer-split нужна связь form_id и writer_id
+# В IAM это ascii/forms.txt
+forms_txt_path: ${data.raw_dir}/ascii/forms.txt

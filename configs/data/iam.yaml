@@ -1,0 +1,15 @@
+raw_dir: data/raw
+
+images_subdir: lines
+
+annotations_path: ${data.raw_dir}/ascii/lines.txt
+forms_path: ${data.raw_dir}/ascii/forms.txt
+
+processed_dir: data/processed
+manifest_path: ${data.processed_dir}/manifest.parquet
+
+# Фильтрация по качеству (как в IAM: ok / err)
+keep_status: ["ok"]
+
+# Ограничение размера для дебага (0 = без лимита)
+limit: 0

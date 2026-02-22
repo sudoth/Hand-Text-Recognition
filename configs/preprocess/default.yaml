@@ -1,0 +1,8 @@
+height: 128
+keep_aspect: true
+pad_value: 255
+
+tight_crop:
+  enabled: false
+  margin: 2
+  threshold: 245

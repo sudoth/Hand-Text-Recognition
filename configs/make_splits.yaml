@@ -1,0 +1,7 @@
+defaults:
+  - data: iam
+  - split: form
+  - mlflow: local
+
+command:
+  name: make_splits
