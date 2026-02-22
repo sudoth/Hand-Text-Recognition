@@ -11,5 +11,5 @@ manifest_path: ${data.processed_dir}/manifest.parquet
 # Фильтрация по качеству (в IAM: ok / err)
 keep_status: ["ok"]
 
-# Ограничение размера для дебага (0 = без лимита)
+# Ограничение размера для отладки (0 = без лимита)
 limit: 0

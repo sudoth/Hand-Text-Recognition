@@ -8,7 +8,7 @@ from rich.console import Console
 
 from htr_ocr.config_loader import load_cfg
 from htr_ocr.data.iam import build_manifest
-from htr_ocr.data.splits import attach_writer_id, make_group_split
+from htr_ocr.data.splits import make_group_split
 from htr_ocr.utils.io import ensure_dir
 from htr_ocr.utils.mlflow_utils import mlflow_run
 
@@ -56,12 +56,12 @@ class HTRCLI:
 
             strategy = str(cfg.split.strategy)
             if strategy == "writer":
-                df = attach_writer_id(df, cfg.split.forms_txt_path)
                 group_col = "writer_id"
                 if df[group_col].isna().any():
                     missing = int(df[group_col].isna().sum())
                     raise ValueError(
-                        f"writer_id missing for {missing} rows. Check forms_txt_path={cfg.split.forms_txt_path}"
+                        f"writer_id missing for {missing} rows. "
+                        "Rebuild manifest with data.forms_path pointing to ascii/forms.txt."
                     )
             elif strategy == "form":
                 group_col = "form_id"

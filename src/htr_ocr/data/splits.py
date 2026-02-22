@@ -1,9 +1,6 @@
-from pathlib import Path
 import random
 
 import pandas as pd
-
-from htr_ocr.data.iam import parse_forms_txt
 
 def _normalize_fracs(train: float, val: float, test: float) -> tuple[float, float, float]:
     s = train + val + test
@@ -43,10 +40,3 @@ def make_group_split(
     df_test = df[df[group_col].isin(g_test)].reset_index(drop=True)
 
     return df_train, df_val, df_test
-
-
-def attach_writer_id(df: pd.DataFrame, forms_txt_path: str | Path) -> pd.DataFrame:
-    mapping = parse_forms_txt(forms_txt_path)
-    out = df.copy()
-    out["writer_id"] = out["form_id"].map(mapping)
-    return out
