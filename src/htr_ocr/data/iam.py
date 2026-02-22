@@ -116,8 +116,7 @@ def index_line_images(images_root: str | Path, exts: Iterable[str] = (".png", ".
 
 
 def build_manifest(
-    raw_dir: str | Path,
-    images_subdir: str,
+    images_root: str | Path,
     annotations_path: str | Path,
     forms_path: str | Path,
     keep_status: list[str] | None,
@@ -130,8 +129,7 @@ def build_manifest(
 
     images_subdir — путь относительно raw_dir, где лежат изображения строк.
     """
-    raw_dir = Path(raw_dir)
-    images_root = raw_dir / images_subdir
+    images_root = Path(images_root)
 
     # parse_lines_txt
     records = parse_lines_txt(annotations_path, keep_status=keep_status)

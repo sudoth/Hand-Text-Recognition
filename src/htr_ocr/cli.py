@@ -28,8 +28,7 @@ class HTRCLI:
 
         with mlflow_run("make_manifest", cfg):
             df = build_manifest(
-                raw_dir=cfg.data.raw_dir,
-                images_subdir=cfg.data.images_subdir,
+                images_root=cfg.data.images_root,
                 annotations_path=cfg.data.annotations_path,
                 forms_path=getattr(cfg.data, 'forms_path', None),
                 keep_status=list(cfg.data.keep_status),

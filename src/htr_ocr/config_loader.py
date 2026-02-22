@@ -8,7 +8,7 @@ from omegaconf import DictConfig
 
 
 def project_root() -> Path:
-    # .../src/htr_ocr/config_loader.py == root
+    # .../src/htr_ocr/config_loader.py == project root
     return Path(__file__).resolve().parents[2]
 
 

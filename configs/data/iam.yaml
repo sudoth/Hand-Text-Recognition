@@ -1,6 +1,6 @@
 raw_dir: data/raw
 
-images_subdir: lines
+images_root: ${data.raw_dir}/lines
 
 annotations_path: ${data.raw_dir}/ascii/lines.txt
 forms_path: ${data.raw_dir}/ascii/forms.txt
