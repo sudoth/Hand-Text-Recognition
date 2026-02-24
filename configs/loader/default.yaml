@@ -1,0 +1,15 @@
+split: train
+batch_size: 8
+num_workers: 0
+shuffle: true
+pin_memory: false
+
+# бакетинг по ширине
+bucket:
+  enabled: false
+  seed: 42
+  drop_last: false
+
+# Сколько батчей показать в inspect_data
+n_batches: 2
+samples_path: data/samples

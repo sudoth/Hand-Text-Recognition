@@ -2,8 +2,8 @@ defaults:
   - _self_
   - data: iam
   - preprocess: default
+  - loader: default
   - mlflow: local
 
 command:
-  name: make_manifest
-
+  name: inspect_data
