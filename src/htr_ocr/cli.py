@@ -4,7 +4,7 @@ import fire
 import pandas as pd
 from rich.console import Console
 
-from htr_ocr.config_loader import load_cfg, project_root
+from htr_ocr.config_loader import load_cfg
 from htr_ocr.data.iam import build_manifest
 from htr_ocr.data.splits import make_group_split
 from htr_ocr.utils.io import ensure_dir

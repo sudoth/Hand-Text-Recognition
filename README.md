@@ -57,3 +57,9 @@ MLflow конфиг ляжет в `configs/mlflow/local.yaml`. По умолча
 ```bash
 uv run mlflow ui
 ```
+
+## Batch sample
+Пример одного батча появится в data/sample в сетке 2 на 4
+```bash
+uv run htr inspect_data
+```
