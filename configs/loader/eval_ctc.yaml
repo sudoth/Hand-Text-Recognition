@@ -1,0 +1,12 @@
+split: val
+batch_size: 16
+num_workers: 0
+shuffle: false
+pin_memory: false
+
+bucket:
+  enabled: false
+  seed: 42
+  drop_last: false
+
+n_batches: 2

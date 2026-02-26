@@ -1,0 +1,22 @@
+seed: 42
+device: cuda
+
+epochs: 100
+lr: 2e-3
+
+weight_decay: 1e-5
+adam_beta1: 0.9
+adam_beta2: 0.999
+adam_eps: 1e-8
+
+grad_clip: 5.0
+
+early_stop:
+  patience: 10
+
+runs_dir: runs/crnn_ctc
+
+# Сделается сам после трейна
+vocab_path: ${data.processed_dir}/vocab_ctc.json
+
+log_checkpoint_to_mlflow: true

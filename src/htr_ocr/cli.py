@@ -1,6 +1,9 @@
 from pathlib import Path
 
+import torch
+
 import fire
+import mlflow
 import pandas as pd
 from rich.console import Console
 
@@ -18,6 +21,11 @@ from htr_ocr.data.collate import collate_line_batch
 from htr_ocr.data.dataset import IamLineDataset
 from htr_ocr.data.samplers import BucketBatchSampler
 from htr_ocr.data.transforms import make_image_transform
+
+from htr_ocr.train.ctc_infer import load_checkpoint
+from htr_ocr.train.ctc_trainer import evaluate, make_dataloader, train_crnn_ctc
+from htr_ocr.train.ctc_infer import infer_one
+
 
 console = Console()
 
@@ -48,7 +56,7 @@ class HTRCLI:
         manifest_path = Path(cfg.data.manifest_path)
         if not manifest_path.exists():
             raise FileNotFoundError(
-                f"Manifest not found: {manifest_path}."
+                f"Manifest not found at {manifest_path}."
             )
 
         ensure_dir(processed_dir)
@@ -62,7 +70,7 @@ class HTRCLI:
             elif strategy == "form":
                 group_col = "form_id"
             else:
-                raise ValueError(f"Unknown split.strategy={strategy} (expected 'form' or 'writer')")
+                raise ValueError(f"Unknown split.strategy={strategy}")
 
             train_df, val_df, test_df = make_group_split(
                 df,
@@ -162,6 +170,71 @@ class HTRCLI:
 
                 t0 = batch["texts"][0]
                 console.print(f"  sample text[0]: {t0[:120]}")
+
+    def train_crnn_ctc(self, *overrides: str) -> None:
+        cfg = load_cfg("train_crnn_ctc", overrides=list(overrides))
+
+        with mlflow_run("train_crnn_ctc", cfg):
+            result = train_crnn_ctc(cfg)
+
+            device = torch.device(cfg.train.device if torch.cuda.is_available() else "cpu")
+            model, tok = load_checkpoint(result.best_checkpoint, device)
+            test_dl = make_dataloader(cfg, "test")
+            metrics = evaluate(model, test_dl, tok, device)
+
+            mlflow.log_metric("test_loss", metrics["loss"])
+            mlflow.log_metric("test_cer", metrics["cer"])
+            mlflow.log_metric("test_wer", metrics["wer"])
+
+            console.print(
+                f"Best checkpoint={result.best_checkpoint} "
+                f"val_CER={result.best_val_cer:.4f} val_WER={result.best_val_wer:.4f} "
+                f"test_CER={metrics['cer']:.4f} test_WER={metrics['wer']:.4f}"
+            )
+
+    def eval_crnn_ctc(self, *overrides: str) -> None:
+        cfg = load_cfg("eval_crnn_ctc", overrides=list(overrides))
+
+        split_name = str(cfg.eval.split)
+        ckpt_path = Path(cfg.eval.checkpoint_path)
+        if not ckpt_path.exists():
+            raise FileNotFoundError(f"Checkpoint not found at {ckpt_path}")
+
+        with mlflow_run("eval_crnn_ctc", cfg, extra_tags={"split": split_name}):
+            device = torch.device(cfg.eval.device if torch.cuda.is_available() else "cpu")
+            model, tok = load_checkpoint(ckpt_path, device)
+            dl = make_dataloader(cfg, split_name)
+            metrics = evaluate(model, dl, tok, device)
+
+            mlflow.log_metric(f"{split_name}_loss", metrics["loss"])
+            mlflow.log_metric(f"{split_name}_cer", metrics["cer"])
+            mlflow.log_metric(f"{split_name}_wer", metrics["wer"])
+
+            console.print(
+                f"split={split_name}: loss={metrics['loss']:.4f} "
+                f"CER={metrics['cer']:.4f} WER={metrics['wer']:.4f}"
+            )
+
+    def infer_crnn_ctc(self, *overrides: str) -> None:
+        cfg = load_cfg("infer_crnn_ctc", overrides=list(overrides))
+
+        ckpt_path = Path(cfg.infer.checkpoint_path)
+        if not ckpt_path.exists():
+            raise FileNotFoundError(f"Checkpoint not found at {ckpt_path}")
+        
+        image_path = Path(cfg.infer.image_path)
+        if not image_path.exists():
+            raise FileNotFoundError(f"Image not found at {ckpt_path}")
+
+        pred = infer_one(
+            checkpoint_path=ckpt_path,
+            image_path=image_path,
+            height=int(cfg.preprocess.height),
+            keep_aspect=bool(cfg.preprocess.keep_aspect),
+            pad_value=int(cfg.preprocess.pad_value),
+            device_str=str(cfg.infer.device),
+        )
+        console.print(f"{pred}")
 
 
 def main() -> None:

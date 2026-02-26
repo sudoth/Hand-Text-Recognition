@@ -1,0 +1,11 @@
+defaults:
+  - _self_
+  - data: iam
+  - preprocess: default
+  - loader: train_ctc
+  - model: crnn_ctc
+  - train: ctc_default
+  - mlflow: local
+
+command:
+  name: train_crnn_ctc

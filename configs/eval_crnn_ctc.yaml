@@ -1,0 +1,15 @@
+defaults:
+  - _self_
+  - data: iam
+  - preprocess: default
+  - loader: eval_ctc
+  - model: crnn_ctc
+  - mlflow: local
+
+command:
+  name: eval_crnn_ctc
+
+eval:
+  checkpoint_path: runs/crnn_ctc/best.pt
+  split: test
+  device: cuda
