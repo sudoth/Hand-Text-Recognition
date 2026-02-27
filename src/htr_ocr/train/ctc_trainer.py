@@ -16,6 +16,7 @@ from htr_ocr.data.dataset import IamLineDataset
 from htr_ocr.data.samplers import BucketBatchSampler
 from htr_ocr.data.transforms import make_image_transform
 from htr_ocr.models.crnn_ctc import CRNNCTC
+from htr_ocr.text.ctc_decode import ctc_beam_search_batch, ctc_greedy_decode_batch
 from htr_ocr.text.ctc_tokenizer import CTCTokenizer, build_charset
 from htr_ocr.utils.metrics import AverageMeter, cer, wer
 
@@ -48,50 +49,37 @@ def _input_lengths_from_widths(widths: list[int], downsample: int) -> torch.Tens
     return torch.tensor(lens, dtype=torch.long)
 
 
-def greedy_decode_batch(
-    log_probs: torch.Tensor,
-    tokenizer: CTCTokenizer,
-) -> list[str]:
-    """
-    log_probs: [T, B, C]
-    """
-    with torch.no_grad():
-        ids = log_probs.argmax(dim=-1)  # [T, B]
-        ids = ids.cpu().numpy()
-
-    preds: list[str] = []
-    blank = tokenizer.blank_id
-    for b in range(ids.shape[1]):
-        seq = ids[:, b].tolist()
-        collapsed: list[int] = []
-        prev = None
-        for i in seq:
-            if i == prev:
-                continue
-            prev = i
-            if i == blank:
-                continue
-            collapsed.append(i)
-        preds.append(tokenizer.decode_greedy(collapsed))
-    return preds
+def _decode_batch(log_probs: torch.Tensor, tokenizer: CTCTokenizer, decode_cfg) -> list[str]:
+    method = str(getattr(decode_cfg, "method", "greedy"))
+    if method == "beam":
+        return ctc_beam_search_batch(
+            log_probs,
+            tokenizer,
+            beam_width=int(getattr(decode_cfg, "beam_width", 50)),
+            topk=int(getattr(decode_cfg, "topk", 20)),
+        )
+    return ctc_greedy_decode_batch(log_probs, tokenizer)
 
 
 def make_dataloader(
     cfg,
     split_name: str,
-    tokenizer: CTCTokenizer | None = None,
 ) -> DataLoader:
     processed_dir = Path(cfg.data.processed_dir)
     csv_path = processed_dir / f"{split_name}.csv"
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV not found: {csv_path}")
-
+    
+    is_train = split_name == "train"
     transform = make_image_transform(
         height=int(cfg.preprocess.height),
         keep_aspect=bool(cfg.preprocess.keep_aspect),
         tight_crop_enabled=bool(cfg.preprocess.tight_crop.enabled),
         tight_crop_threshold=int(cfg.preprocess.tight_crop.threshold),
         tight_crop_margin=int(cfg.preprocess.tight_crop.margin),
+        augment_cfg=getattr(cfg, "augment", None) if is_train else None,
+        is_train=is_train,
+        fill=int(cfg.preprocess.pad_value),
         to_float_tensor=True,
     )
 
@@ -149,6 +137,7 @@ def evaluate(
     dl: DataLoader,
     tokenizer: CTCTokenizer,
     device: torch.device,
+    decode_cfg,
     blank_id: int = 0,
 ) -> dict[str, float]:
     model.eval()
@@ -172,7 +161,7 @@ def evaluate(
 
             loss = ctc_loss(log_probs, targets, input_lengths, target_lengths)
 
-        preds = greedy_decode_batch(log_probs, tokenizer)
+        preds = _decode_batch(log_probs, tokenizer, decode_cfg)
 
         loss_m.update(float(loss.item()), n=len(texts))
         for p, t in zip(preds, texts, strict=False):
@@ -250,7 +239,7 @@ def train_crnn_ctc(cfg) -> TrainResult:
             loss_m.update(float(loss.item()), n=len(texts))
             pbar.set_postfix(loss=f"{loss_m.avg:.4f}")
 
-        val_metrics = evaluate(model, val_dl, tokenizer, device)
+        val_metrics = evaluate(model, val_dl, tokenizer, device, decode_cfg=cfg.decode)
 
         mlflow.log_metric("train_loss", loss_m.avg, step=epoch)
         mlflow.log_metric("val_loss", val_metrics["loss"], step=epoch)

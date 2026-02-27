@@ -2,9 +2,11 @@ defaults:
   - _self_
   - data: iam
   - preprocess: default
+  - augment: paper
   - loader: train_ctc
   - model: crnn_ctc
   - train: ctc_default
+  - decode: beam
   - mlflow: local
 
 command:

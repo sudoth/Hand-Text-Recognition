@@ -5,8 +5,8 @@ from PIL import Image
 
 from htr_ocr.data.transforms import make_image_transform
 from htr_ocr.models.crnn_ctc import CRNNCTC
+from htr_ocr.text.ctc_decode import ctc_beam_search_batch, ctc_greedy_decode_batch
 from htr_ocr.text.ctc_tokenizer import CTCTokenizer
-from htr_ocr.train.ctc_trainer import greedy_decode_batch
 
 
 def load_checkpoint(checkpoint_path: str | Path, device: torch.device) -> tuple[CRNNCTC, CTCTokenizer]:
@@ -28,10 +28,14 @@ def load_checkpoint(checkpoint_path: str | Path, device: torch.device) -> tuple[
 def infer_one(
     checkpoint_path: str | Path,
     image_path: str | Path,
+    *,
     height: int = 128,
     keep_aspect: bool = True,
     pad_value: int = 255,
     device_str: str = "cuda",
+    decode_method: str = "beam",
+    beam_width: int = 50,
+    topk: int = 20,
 ) -> str:
     device = torch.device(device_str if torch.cuda.is_available() else "cpu")
     model, tok = load_checkpoint(checkpoint_path, device)
@@ -42,6 +46,9 @@ def infer_one(
         tight_crop_enabled=False,
         tight_crop_threshold=245,
         tight_crop_margin=2,
+        is_train=False,
+        augment_cfg=None,
+        fill=int(pad_value),
         to_float_tensor=True,
     )
 
@@ -50,5 +57,11 @@ def infer_one(
     x = x.unsqueeze(0).to(device)  # [B=1,1,H,W]
 
     log_probs = model(x)  # [T,1,C]
-    pred = greedy_decode_batch(log_probs, tok)[0]
+
+    method = str(decode_method)
+    if method == "beam":
+        pred = ctc_beam_search_batch(log_probs, tok, beam_width=int(beam_width), topk=int(topk))[0]
+    else:
+        pred = ctc_greedy_decode_batch(log_probs, tok)[0]
+
     return pred

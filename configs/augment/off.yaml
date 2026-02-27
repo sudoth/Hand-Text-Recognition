@@ -1,0 +1,29 @@
+enabled: false
+p: 0.0
+one_of: true
+
+shear:
+  enabled: true
+  max_degrees: 7.0
+
+rotate:
+  enabled: true
+  max_degrees: 3.0
+
+elastic:
+  enabled: true
+  alpha: 40.0
+  sigma: 6.0
+
+geometric:
+  enabled: true
+  distortion:
+    enabled: true
+    max_shift_px: 6
+    num_stripes: 12
+  stretch:
+    enabled: true
+    max_factor: 0.15
+  perspective:
+    enabled: true
+    distortion_scale: 0.2

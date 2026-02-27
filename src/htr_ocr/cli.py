@@ -1,31 +1,27 @@
 from pathlib import Path
 
-import torch
-
 import fire
 import mlflow
 import pandas as pd
+import torch
 from rich.console import Console
+from torch.utils.data import DataLoader
+from torchvision.transforms.functional import to_pil_image
+from torchvision.utils import make_grid
+from PIL import Image
+import torch.nn.functional as F
 
 from htr_ocr.config_loader import load_cfg
-from htr_ocr.data.iam import build_manifest
-from htr_ocr.data.splits import make_group_split
-from htr_ocr.utils.io import ensure_dir
-from htr_ocr.utils.mlflow_utils import mlflow_run
-
-from torch.utils.data import DataLoader
-from torchvision.utils import make_grid
-from torchvision.transforms.functional import to_pil_image
-
 from htr_ocr.data.collate import collate_line_batch
 from htr_ocr.data.dataset import IamLineDataset
+from htr_ocr.data.iam import build_manifest
 from htr_ocr.data.samplers import BucketBatchSampler
+from htr_ocr.data.splits import make_group_split
 from htr_ocr.data.transforms import make_image_transform
-
-from htr_ocr.train.ctc_infer import load_checkpoint
+from htr_ocr.train.ctc_infer import infer_one, load_checkpoint
 from htr_ocr.train.ctc_trainer import evaluate, make_dataloader, train_crnn_ctc
-from htr_ocr.train.ctc_infer import infer_one
-
+from htr_ocr.utils.io import ensure_dir
+from htr_ocr.utils.mlflow_utils import mlflow_run
 
 console = Console()
 
@@ -40,7 +36,7 @@ class HTRCLI:
             df = build_manifest(
                 images_root=cfg.data.images_root,
                 annotations_path=cfg.data.annotations_path,
-                forms_path=getattr(cfg.data, 'forms_path', None),
+                forms_path=getattr(cfg.data, "forms_path", None),
                 keep_status=list(cfg.data.keep_status),
                 limit=int(cfg.data.limit),
             )
@@ -55,9 +51,7 @@ class HTRCLI:
         processed_dir = Path(cfg.data.processed_dir)
         manifest_path = Path(cfg.data.manifest_path)
         if not manifest_path.exists():
-            raise FileNotFoundError(
-                f"Manifest not found at {manifest_path}."
-            )
+            raise FileNotFoundError(f"Manifest not found at {manifest_path}.")
 
         ensure_dir(processed_dir)
 
@@ -105,6 +99,9 @@ class HTRCLI:
             tight_crop_enabled=bool(cfg.preprocess.tight_crop.enabled),
             tight_crop_threshold=int(cfg.preprocess.tight_crop.threshold),
             tight_crop_margin=int(cfg.preprocess.tight_crop.margin),
+            augment_cfg=None,
+            is_train=False,
+            fill=int(cfg.preprocess.pad_value),
             to_float_tensor=True,
         )
 
@@ -159,7 +156,7 @@ class HTRCLI:
                 widths = batch["widths"]
                 w_max = int(pv.shape[-1])
 
-                grid = make_grid(pv.detach().cpu(), nrow=2, padding=2)  # [1,Hgrid,Wgrid]
+                grid = make_grid(pv.detach().cpu(), nrow=2, padding=2)
                 ensure_dir(cfg.loader.samples_path)
                 to_pil_image(grid).save(Path(cfg.loader.samples_path) / f"grid_{bi}.png")
 
@@ -171,6 +168,79 @@ class HTRCLI:
                 t0 = batch["texts"][0]
                 console.print(f"  sample text[0]: {t0[:120]}")
 
+    def inspect_augmentations(self, image_path: str | None = None, *overrides: str) -> None:
+        cfg = load_cfg("inspect_augmentations", overrides=list(overrides))
+
+        processed_dir = Path(cfg.data.processed_dir)
+        split_name = str(cfg.loader.split)
+
+        if image_path is None:
+            csv_path = processed_dir / f"{split_name}.csv"
+            if not csv_path.exists():
+                raise FileNotFoundError(f"Split CSV not found: {csv_path}")
+            df = pd.read_csv(csv_path)
+            idx = int(cfg.inspect_aug.index)
+            idx = max(0, min(idx, len(df) - 1))
+            image_path = str(df.iloc[idx]["image_path"])
+
+        img_path = Path(image_path)
+        if not img_path.exists():
+            raise FileNotFoundError(f"Image not found at {img_path}")
+
+        base_tf = make_image_transform(
+            height=int(cfg.preprocess.height),
+            keep_aspect=bool(cfg.preprocess.keep_aspect),
+            tight_crop_enabled=bool(cfg.preprocess.tight_crop.enabled),
+            tight_crop_threshold=int(cfg.preprocess.tight_crop.threshold),
+            tight_crop_margin=int(cfg.preprocess.tight_crop.margin),
+            augment_cfg=None,
+            is_train=False,
+            fill=int(cfg.preprocess.pad_value),
+            to_float_tensor=True,
+        )
+
+        aug_tf = make_image_transform(
+            height=int(cfg.preprocess.height),
+            keep_aspect=bool(cfg.preprocess.keep_aspect),
+            tight_crop_enabled=bool(cfg.preprocess.tight_crop.enabled),
+            tight_crop_threshold=int(cfg.preprocess.tight_crop.threshold),
+            tight_crop_margin=int(cfg.preprocess.tight_crop.margin),
+            augment_cfg=cfg.augment,
+            is_train=True,
+            fill=int(cfg.preprocess.pad_value),
+            to_float_tensor=True,
+        )
+
+        img = Image.open(img_path).convert("L")
+
+        base = base_tf(img)  # [1,H,W]
+        n = int(cfg.inspect_aug.n)
+        cols = int(cfg.inspect_aug.cols)
+        samples = [base] + [aug_tf(img) for _ in range(n)]
+
+        pad_value = float(cfg.preprocess.pad_value) / 255.0
+        max_w = max(int(t.shape[-1]) for t in samples)
+        padded: list[torch.Tensor] = []
+        for t in samples:
+            w = int(t.shape[-1])
+            if w < max_w:
+                t = F.pad(t, (0, max_w - w, 0, 0), value=pad_value)
+            padded.append(t)
+
+        batch = torch.stack(padded, dim=0)  # [N,1,H,W]
+        grid = make_grid(batch.detach().cpu(), nrow=max(1, cols), padding=2)
+
+        ensure_dir(cfg.inspect_aug.out_dir)
+        out_dir = Path(cfg.inspect_aug.out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / "aug_grid.png"
+        to_pil_image(grid).save(out_path)
+
+        with mlflow_run("inspect_augmentations", cfg, extra_tags={"split": split_name}):
+            mlflow.log_artifact(str(out_path), artifact_path="augmentations")
+
+        console.print(f"Saved augmentation grid: {out_path}")
+
     def train_crnn_ctc(self, *overrides: str) -> None:
         cfg = load_cfg("train_crnn_ctc", overrides=list(overrides))
 
@@ -180,7 +250,7 @@ class HTRCLI:
             device = torch.device(cfg.train.device if torch.cuda.is_available() else "cpu")
             model, tok = load_checkpoint(result.best_checkpoint, device)
             test_dl = make_dataloader(cfg, "test")
-            metrics = evaluate(model, test_dl, tok, device)
+            metrics = evaluate(model, test_dl, tok, device, decode_cfg=cfg.decode)
 
             mlflow.log_metric("test_loss", metrics["loss"])
             mlflow.log_metric("test_cer", metrics["cer"])
@@ -204,7 +274,7 @@ class HTRCLI:
             device = torch.device(cfg.eval.device if torch.cuda.is_available() else "cpu")
             model, tok = load_checkpoint(ckpt_path, device)
             dl = make_dataloader(cfg, split_name)
-            metrics = evaluate(model, dl, tok, device)
+            metrics = evaluate(model, dl, tok, device, decode_cfg=cfg.decode)
 
             mlflow.log_metric(f"{split_name}_loss", metrics["loss"])
             mlflow.log_metric(f"{split_name}_cer", metrics["cer"])
@@ -221,10 +291,10 @@ class HTRCLI:
         ckpt_path = Path(cfg.infer.checkpoint_path)
         if not ckpt_path.exists():
             raise FileNotFoundError(f"Checkpoint not found at {ckpt_path}")
-        
+
         image_path = Path(cfg.infer.image_path)
         if not image_path.exists():
-            raise FileNotFoundError(f"Image not found at {ckpt_path}")
+            raise FileNotFoundError(f"Image not found at {image_path}")
 
         pred = infer_one(
             checkpoint_path=ckpt_path,
@@ -233,6 +303,9 @@ class HTRCLI:
             keep_aspect=bool(cfg.preprocess.keep_aspect),
             pad_value=int(cfg.preprocess.pad_value),
             device_str=str(cfg.infer.device),
+            decode_method=str(getattr(cfg.decode, "method", "greedy")),
+            beam_width=int(getattr(cfg.decode, "beam_width", 50)),
+            topk=int(getattr(cfg.decode, "topk", 20)),
         )
         console.print(f"{pred}")
 

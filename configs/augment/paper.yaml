@@ -1,0 +1,31 @@
+enabled: true
+p: 1
+one_of: false
+
+# Афинные 
+shear:  # Наклон почерка
+  enabled: true
+  max_degrees: 30.0
+rotate:  # Наклон самой строки
+  enabled: true
+  max_degrees: 1.0
+
+# Торчвижн
+elastic:
+  enabled: true
+  alpha: 0.33  # Резкость чернил
+  sigma: 0.5  # Сглаженность шума
+
+# Геометрические
+geometric:
+  enabled: true
+  distortion:  # Переворот (не нужен совсем)
+    enabled: false
+    max_shift_px: 0.0
+    num_stripes: 0.0
+  stretch:  # Растягивание строки с учетом обреза
+    enabled: true
+    max_factor: 0.15
+  perspective:
+    enabled: false  # Наклон хуже
+    distortion_scale: 0.1
