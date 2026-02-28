@@ -1,5 +1,5 @@
 strategy: form   # form | writer
 seed: 42
-train: 0.90
+train: 0.80
 val: 0.10
-test: 0.00
+test: 0.10
