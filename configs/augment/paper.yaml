@@ -1,11 +1,11 @@
 enabled: true
-p: 1
+p: 0.5
 one_of: false
 
 # Афинные 
 shear:  # Наклон почерка
   enabled: true
-  max_degrees: 30.0
+  max_degrees: 20.0
 rotate:  # Наклон самой строки
   enabled: true
   max_degrees: 1.0
