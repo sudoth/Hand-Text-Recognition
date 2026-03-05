@@ -264,6 +264,27 @@ class HTRCLI:
                 f"test_CER={metrics['cer']:.4f} test_WER={metrics['wer']:.4f}"
             )
 
+    def train_vt_ctc(self, *overrides: str) -> None:
+        cfg = load_cfg("train_vt_ctc", overrides=list(overrides))
+
+        with mlflow_run("train_vt_ctc", cfg):
+            result = train_htr_vt_ctc(cfg)
+
+            device = torch.device(cfg.train.device if torch.cuda.is_available() else "cpu")
+            model, tok = vt_load_checkpoint(result.best_checkpoint, device)
+            test_dl = vt_make_dataloader(cfg, "test")
+            metrics = vt_evaluate(model, test_dl, tok, device, decode_cfg=cfg.decode)
+
+            mlflow.log_metric("test_loss", metrics["loss"])
+            mlflow.log_metric("test_cer", metrics["cer"])
+            mlflow.log_metric("test_wer", metrics["wer"])
+
+            console.print(
+                f"Best checkpoint={result.best_checkpoint} "
+                f"val_CER={result.best_val_cer:.4f} val_WER={result.best_val_wer:.4f} "
+                f"test_CER={metrics['cer']:.4f} test_WER={metrics['wer']:.4f}"
+            )
+
     def eval_crnn_ctc(self, *overrides: str) -> None:
         cfg = load_cfg("eval_crnn_ctc", overrides=list(overrides))
 
@@ -287,6 +308,29 @@ class HTRCLI:
                 f"CER={metrics['cer']:.4f} WER={metrics['wer']:.4f}"
             )
 
+    def eval_vt_ctc(self, *overrides: str) -> None:
+        cfg = load_cfg("eval_vt_ctc", overrides=list(overrides))
+
+        split_name = str(cfg.eval.split)
+        ckpt_path = Path(cfg.eval.checkpoint_path)
+        if not ckpt_path.exists():
+            raise FileNotFoundError(f"Checkpoint not found at {ckpt_path}")
+
+        with mlflow_run("eval_vt_ctc", cfg, extra_tags={"split": split_name}):
+            device = torch.device(cfg.eval.device if torch.cuda.is_available() else "cpu")
+            model, tok = vt_load_checkpoint(ckpt_path, device)
+            dl = vt_make_dataloader(cfg, split_name)
+            metrics = vt_evaluate(model, dl, tok, device, decode_cfg=cfg.decode)
+
+            mlflow.log_metric(f"{split_name}_loss", metrics["loss"])
+            mlflow.log_metric(f"{split_name}_cer", metrics["cer"])
+            mlflow.log_metric(f"{split_name}_wer", metrics["wer"])
+
+            console.print(
+                f"split={split_name}: loss={metrics['loss']:.4f} "
+                f"CER={metrics['cer']:.4f} WER={metrics['wer']:.4f}"
+            )
+
     def infer_crnn_ctc(self, *overrides: str) -> None:
         cfg = load_cfg("infer_crnn_ctc", overrides=list(overrides))
 
@@ -299,6 +343,30 @@ class HTRCLI:
             raise FileNotFoundError(f"Image not found at {image_path}")
 
         pred = infer_one(
+            checkpoint_path=ckpt_path,
+            image_path=image_path,
+            height=int(cfg.preprocess.height),
+            keep_aspect=bool(cfg.preprocess.keep_aspect),
+            pad_value=int(cfg.preprocess.pad_value),
+            device_str=str(cfg.infer.device),
+            decode_method=str(getattr(cfg.decode, "method", "greedy")),
+            beam_width=int(getattr(cfg.decode, "beam_width", 50)),
+            topk=int(getattr(cfg.decode, "topk", 20)),
+        )
+        console.print(f"{pred}")
+
+    def infer_vt_ctc(self, *overrides: str) -> None:
+        cfg = load_cfg("infer_vt_ctc", overrides=list(overrides))
+
+        ckpt_path = Path(cfg.infer.checkpoint_path)
+        if not ckpt_path.exists():
+            raise FileNotFoundError(f"Checkpoint not found at {ckpt_path}")
+
+        image_path = Path(cfg.infer.image_path)
+        if not image_path.exists():
+            raise FileNotFoundError(f"Image not found at {image_path}")
+
+        pred = vt_infer_one(
             checkpoint_path=ckpt_path,
             image_path=image_path,
             height=int(cfg.preprocess.height),

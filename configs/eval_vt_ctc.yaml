@@ -6,7 +6,7 @@ defaults:
   - model: htr_vt_ctc
   - decode: beam
   - span_mask: vt
-  - mlflow: default
+  - mlflow: local
 
 eval:
   device: cuda

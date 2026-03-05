@@ -7,7 +7,7 @@ from PIL import Image
 from htr_ocr.data.transforms import make_image_transform
 from htr_ocr.models.htr_vt_ctc import HTRVTCTC, SpanMaskCfg
 from htr_ocr.text.ctc_tokenizer import CTCTokenizer
-from htr_ocr.text.ctc_decode import decode_batch
+from htr_ocr.text.ctc_decode import ctc_beam_search_decode
 
 
 def load_checkpoint(path: Path, device: torch.device) -> Tuple[HTRVTCTC, CTCTokenizer]:
@@ -61,7 +61,7 @@ def infer_one(
     token_lengths = model.token_lengths_from_widths(widths).to(device)
 
     log_probs = model(x, token_lengths=token_lengths)  # [T,1,V]
-    pred = decode_batch(
+    pred = ctc_beam_search_decode(
         log_probs=log_probs,
         tokenizer=tok,
         method=str(decode_method),

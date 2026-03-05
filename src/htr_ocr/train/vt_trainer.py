@@ -15,8 +15,8 @@ from htr_ocr.data.samplers import BucketBatchSampler
 from htr_ocr.data.transforms import make_image_transform
 from htr_ocr.models.htr_vt_ctc import HTRVTCTC, SpanMaskCfg
 from htr_ocr.optim.sam import SAM
-from htr_ocr.text.ctc_tokenizer import CTCTokenizer, build_or_load_vocab_ctc
-from htr_ocr.text.ctc_decode import decode_batch
+from htr_ocr.text.ctc_tokenizer import CTCTokenizer, build_charset
+from htr_ocr.text.ctc_decode import ctc_beam_search_decode
 from htr_ocr.utils.metrics import cer, wer
 from htr_ocr.utils.io import ensure_dir
 
@@ -117,7 +117,7 @@ def evaluate(model: HTRVTCTC, dl: DataLoader, tokenizer: CTCTokenizer, device: t
 
         loss = ctc_loss(log_probs, targets, input_lengths, target_lengths)
 
-        preds = decode_batch(
+        preds = ctc_beam_search_decode(
             log_probs=log_probs,
             tokenizer=tokenizer,
             method=str(getattr(decode_cfg, "method", "greedy")),
@@ -141,7 +141,7 @@ def evaluate(model: HTRVTCTC, dl: DataLoader, tokenizer: CTCTokenizer, device: t
 def train_htr_vt_ctc(cfg) -> TrainResult:
     device = torch.device(cfg.train.device if torch.cuda.is_available() else "cpu")
 
-    tokenizer = build_or_load_vocab_ctc(cfg)
+    tokenizer = build_charset(cfg)
 
     span_cfg = SpanMaskCfg(
         enabled=bool(cfg.span_mask.enabled),
@@ -162,21 +162,42 @@ def train_htr_vt_ctc(cfg) -> TrainResult:
     train_dl = make_dataloader(cfg, "train")
     val_dl = make_dataloader(cfg, "val")
 
+    opt_cfg = getattr(cfg.train, "optimizer", None)
+    opt_name = str(getattr(opt_cfg, "name", "adamw")).lower()
+    lr = float(getattr(opt_cfg, "lr", getattr(cfg.train, "lr", 3e-4)))
+    weight_decay = float(getattr(opt_cfg, "weight_decay", getattr(cfg.train, "weight_decay", 1e-5)))
+    betas = tuple(getattr(opt_cfg, "betas", [0.9, 0.999]))
+    adam_eps = float(getattr(opt_cfg, "eps", 1e-8))
+
+    if len(betas) != 2:
+        raise ValueError("train.optimizer.betas must contain exactly two values: [beta1, beta2]")
+
+    if opt_name == "adam":
+        base_optimizer = torch.optim.Adam
+    elif opt_name == "adamw":
+        base_optimizer = torch.optim.AdamW
+    else:
+        raise ValueError(f"Unsupported train.optimizer.name={opt_name}. Expected one of: adamw, adam")
+
     use_sam = bool(cfg.train.sam.enabled)
     if use_sam:
         optimizer = SAM(
             model.parameters(),
-            base_optimizer=torch.optim.AdamW,
-            lr=float(cfg.train.lr),
-            weight_decay=float(cfg.train.weight_decay),
+            base_optimizer=base_optimizer,
+            lr=lr,
+            weight_decay=weight_decay,
+            betas=(float(betas[0]), float(betas[1])),
+            eps=adam_eps,
             rho=float(cfg.train.sam.rho),
             adaptive=bool(cfg.train.sam.adaptive),
         )
     else:
-        optimizer = torch.optim.AdamW(
+        optimizer = base_optimizer(
             model.parameters(),
-            lr=float(cfg.train.lr),
-            weight_decay=float(cfg.train.weight_decay),
+            lr=lr,
+            weight_decay=weight_decay,
+            betas=(float(betas[0]), float(betas[1])),
+            eps=adam_eps,
         )
 
     ctc_loss = nn.CTCLoss(blank=tokenizer.blank_id, zero_infinity=True)
