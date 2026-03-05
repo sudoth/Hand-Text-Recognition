@@ -208,19 +208,19 @@ def train_htr_vt_ctc(cfg) -> TrainResult:
     runs_dir = Path(cfg.train.runs_dir)
     run_dir = runs_dir / "htr_vt_ctc"
     ensure_dir(run_dir)
-    best_path = run_dir / "best.pt"
-    last_path = run_dir / "last.pt"
 
     best_val_cer = float("inf")
     best_val_wer = float("inf")
+    best_path = run_dir / "best.pt"
+    
+    patience = int(cfg.train.patience)
     bad_epochs = 0
 
     max_epochs = int(cfg.train.max_epochs)
-    patience = int(cfg.train.patience)
 
     for epoch in range(1, max_epochs + 1):
         model.train()
-        pbar = tqdm(train_dl, desc=f"train e{epoch}", leave=False)
+        pbar = tqdm(train_dl, desc=f"train epoch {epoch}", leave=False)
 
         epoch_loss = 0.0
         seen = 0
@@ -259,33 +259,28 @@ def train_htr_vt_ctc(cfg) -> TrainResult:
         train_loss = epoch_loss / max(1, seen)
 
         val_metrics = evaluate(model, val_dl, tokenizer, device, decode_cfg=cfg.decode)
+
         mlflow.log_metric("train_loss", train_loss, step=epoch)
         mlflow.log_metric("val_loss", val_metrics["loss"], step=epoch)
         mlflow.log_metric("val_cer", val_metrics["cer"], step=epoch)
         mlflow.log_metric("val_wer", val_metrics["wer"], step=epoch)
 
-        torch.save(
-            {
-                "model": model.state_dict(),
-                "tokenizer": tokenizer.to_dict(),
-                "cfg": {},
-            },
-            last_path,
-        )
-
         improved = val_metrics["cer"] < best_val_cer
         if improved:
-            best_val_cer = val_metrics["cer"]
-            best_val_wer = val_metrics["wer"]
+            best_val_cer = float(val_metrics["cer"])
+            best_val_wer = float(val_metrics["wer"])
+            bad_epochs = 0
+
             torch.save(
                 {
-                    "model": model.state_dict(),
-                    "tokenizer": tokenizer.to_dict(),
-                    "cfg": {},
+                    "model_state": model.state_dict(),
+                    "tokenizer": {"id2char": tokenizer.id2char},
+                    "cfg": {"model": dict(cfg.model), "preprocess": dict(cfg.preprocess)},
                 },
                 best_path,
             )
-            bad_epochs = 0
+            if bool(getattr(cfg.train, "log_checkpoint_to_mlflow", True)):
+                mlflow.log_artifact(str(best_path), artifact_path="checkpoints")
         else:
             bad_epochs += 1
 
