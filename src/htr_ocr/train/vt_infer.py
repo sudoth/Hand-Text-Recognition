@@ -13,17 +13,21 @@ from htr_ocr.text.ctc_decode import ctc_beam_search_batch, ctc_greedy_decode_bat
 def load_checkpoint(path: Path, device: torch.device) -> Tuple[HTRVTCTC, CTCTokenizer]:
     ckpt = torch.load(path, map_location=device)
     tok = CTCTokenizer.from_dict(ckpt["tokenizer"])
+    model_cfg = ckpt.get("cfg", {}).get("model", {})
+    state = ckpt.get("model_state", ckpt.get("model"))
+    if state is None:
+        raise KeyError("Checkpoint has neither 'model_state' nor 'model' key")
 
     model = HTRVTCTC(
         vocab_size=tok.vocab_size,
-        embed_dim=768,
-        n_heads=6,
-        n_layers=4,
-        ffn_dim=3072,
-        dropout=0.1,
+        embed_dim=int(model_cfg.get("embed_dim", 768)),
+        n_heads=int(model_cfg.get("n_heads", 6)),
+        n_layers=int(model_cfg.get("n_layers", 4)),
+        ffn_dim=int(model_cfg.get("ffn_dim", 3072)),
+        dropout=float(model_cfg.get("dropout", 0.1)),
         span_mask=SpanMaskCfg(enabled=False),
     ).to(device)
-    model.load_state_dict(ckpt["model"], strict=True)
+    model.load_state_dict(state, strict=True)
     model.eval()
     return model, tok
 
