@@ -21,6 +21,6 @@ patience: 100
 runs_dir: runs
 
 sam:
-  enabled: false
+  enabled: true
   rho: 0.05
   adaptive: false
