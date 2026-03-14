@@ -36,6 +36,11 @@ def _ctc_prepare_targets(tokenizer: CTCTokenizer, texts: list[str]) -> tuple[tor
     return targets, lengths
 
 
+def _set_backbone_trainable(model: HTRVTCTC, trainable: bool) -> None:
+    for p in model.extractor.parameters():
+        p.requires_grad = bool(trainable)
+
+
 def make_dataloader(cfg, split: str) -> DataLoader:
     processed_dir = Path(cfg.data.processed_dir)
     csv_path = processed_dir / f"{split}.csv"
@@ -154,6 +159,16 @@ def train_htr_vt_ctc(cfg) -> TrainResult:
         span_len=int(cfg.span_mask.span_len),
     )
 
+    pretrain_mode = str(getattr(cfg.model, "backbone_pretrain", "default")).strip().lower()
+    if pretrain_mode == "default":
+        backbone_pretrained = True
+    elif pretrain_mode == "none":
+        backbone_pretrained = False
+    else:
+        raise ValueError(
+            f"Unknown model.backbone_pretrain={pretrain_mode!r}. Expected one of: default, none."
+        )
+
     model = HTRVTCTC(
         vocab_size=tokenizer.vocab_size,
         embed_dim=int(cfg.model.embed_dim),
@@ -162,6 +177,7 @@ def train_htr_vt_ctc(cfg) -> TrainResult:
         ffn_dim=int(cfg.model.ffn_dim),
         dropout=float(cfg.model.dropout),
         span_mask=span_cfg,
+        backbone_pretrained=backbone_pretrained,
     ).to(device)
 
     train_dl = make_dataloader(cfg, "train")
@@ -219,6 +235,7 @@ def train_htr_vt_ctc(cfg) -> TrainResult:
     bad_epochs = 0
 
     max_epochs = int(cfg.train.max_epochs)
+    backbone_freeze_epochs = max(0, int(getattr(cfg.train, "backbone_freeze_epochs", 0)))
 
     scheduler = None
     scheduler_cfg = getattr(cfg.train, "scheduler", None)
@@ -239,6 +256,10 @@ def train_htr_vt_ctc(cfg) -> TrainResult:
 
     for epoch in range(1, max_epochs + 1):
         model.train()
+        freeze_backbone_now = epoch <= backbone_freeze_epochs
+        _set_backbone_trainable(model, trainable=not freeze_backbone_now)
+        if freeze_backbone_now:
+            model.extractor.eval()
         pbar = tqdm(train_dl, desc=f"train epoch {epoch}", leave=False)
 
         epoch_loss = 0.0

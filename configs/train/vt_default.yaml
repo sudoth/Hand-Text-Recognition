@@ -17,6 +17,7 @@ scheduler:
 
 max_epochs: 100
 patience: 100
+backbone_freeze_epochs: 5
 
 runs_dir: runs
 

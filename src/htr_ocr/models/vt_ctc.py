@@ -5,7 +5,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models import resnet18
+from torchvision.models import ResNet18_Weights, resnet18
 
 from htr_ocr.regularization.span_mask import sample_span_mask
 
@@ -20,9 +20,15 @@ def sinusoidal_positional_encoding_1d(length: int, dim: int, device: torch.devic
 
 
 class ResNet18LineExtractor(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, pretrained: bool = False) -> None:
         super().__init__()
-        m = resnet18(weights=None)
+        weights = ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
+        try:
+            m = resnet18(weights=weights)
+        except Exception as exc:  # pragma: no cover - depends on runtime/cache/network
+            raise RuntimeError(
+                "Failed to load pretrained ResNet18 weights."
+            ) from exc
 
         self.stem = nn.Sequential(m.conv1, m.bn1, m.relu, m.maxpool)
 
@@ -81,12 +87,15 @@ class HTRVTCTC(nn.Module):
         ffn_dim: int = 3072,
         dropout: float = 0.1,
         span_mask: Optional[SpanMaskCfg] = None,
+        backbone_pretrained: bool = False,
     ) -> None:
         super().__init__()
         self.vocab_size = int(vocab_size)
         self.embed_dim = int(embed_dim)
 
-        self.extractor = ResNet18LineExtractor()
+        self.extractor = ResNet18LineExtractor(
+            pretrained=bool(backbone_pretrained),
+        )
         self.proj = nn.Conv2d(256, self.embed_dim, kernel_size=1)
 
         enc_layer = nn.TransformerEncoderLayer(
