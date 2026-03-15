@@ -1,0 +1,19 @@
+defaults:
+  - _self_
+  - data: iam
+  - loader: eval_ctc
+  - preprocess: default
+  - model: trocr
+  - mlflow: local
+
+eval:
+  device: cuda
+  split: test
+  checkpoint_path: runs/trocr/best
+
+generate:
+  num_beams: 4
+  max_new_tokens: 128
+  length_penalty: 1.0
+  early_stopping: true
+  no_repeat_ngram_size: 0

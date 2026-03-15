@@ -1,0 +1,4 @@
+name: trocr
+pretrained_name: microsoft/trocr-small-handwritten
+max_target_length: 128
+freeze_encoder_epochs: 0

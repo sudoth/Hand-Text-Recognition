@@ -1,0 +1,16 @@
+defaults:
+  - _self_
+  - data: iam
+  - loader: train_ctc
+  - preprocess: default
+  - model: trocr
+  - train: trocr_default
+  - augment: "off"
+  - mlflow: local
+
+generate:
+  num_beams: 1
+  max_new_tokens: 128
+  length_penalty: 1.0
+  early_stopping: true
+  no_repeat_ngram_size: 0

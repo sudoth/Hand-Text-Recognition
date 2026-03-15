@@ -25,6 +25,8 @@ from htr_ocr.train.vt_infer import infer_one as vt_infer_one, load_checkpoint as
 from htr_ocr.utils.io import ensure_dir
 from htr_ocr.utils.repro import seed_everything
 from htr_ocr.utils.mlflow_utils import mlflow_run
+from htr_ocr.train.trocr_infer import infer_one as trocr_infer_one, load_checkpoint as trocr_load_checkpoint
+from htr_ocr.train.trocr_trainer import evaluate as trocr_evaluate, make_dataloader as trocr_make_dataloader, train_trocr
 
 console = Console()
 
@@ -381,6 +383,76 @@ class HTRCLI:
             decode_method=str(getattr(cfg.decode, "method", "greedy")),
             beam_width=int(getattr(cfg.decode, "beam_width", 50)),
             topk=int(getattr(cfg.decode, "topk", 20)),
+        )
+        console.print(f"{pred}")
+
+    def train_trocr(self, *overrides: str) -> None:
+        cfg = load_cfg("train_trocr", overrides=list(overrides))
+
+        with mlflow_run("train_trocr", cfg):
+            result = train_trocr(cfg)
+
+            device = torch.device(cfg.train.device if torch.cuda.is_available() else "cpu")
+            model, processor = trocr_load_checkpoint(Path(result.best_checkpoint), device)
+            test_dl = trocr_make_dataloader(cfg, "test", processor)
+            metrics = trocr_evaluate(model, processor, test_dl, device, generate_cfg=cfg.generate)
+
+            mlflow.log_metric("test_loss", metrics["loss"])
+            mlflow.log_metric("test_cer", metrics["cer"])
+            mlflow.log_metric("test_wer", metrics["wer"])
+
+            console.print(
+                f"Best checkpoint={result.best_checkpoint} "
+                f"val_CER={result.best_val_cer:.4f} val_WER={result.best_val_wer:.4f} "
+                f"test_CER={metrics['cer']:.4f} test_WER={metrics['wer']:.4f}"
+            )
+
+    def eval_trocr(self, *overrides: str) -> None:
+        cfg = load_cfg("eval_trocr", overrides=list(overrides))
+
+        split_name = str(cfg.eval.split)
+        ckpt_path = Path(cfg.eval.checkpoint_path)
+        if not ckpt_path.exists():
+            raise FileNotFoundError(f"Checkpoint directory not found at {ckpt_path}")
+
+        with mlflow_run("eval_trocr", cfg, extra_tags={"split": split_name}):
+            device = torch.device(cfg.eval.device if torch.cuda.is_available() else "cpu")
+            model, processor = trocr_load_checkpoint(ckpt_path, device)
+            dl = trocr_make_dataloader(cfg, split_name, processor)
+            metrics = trocr_evaluate(model, processor, dl, device, generate_cfg=cfg.generate)
+
+            mlflow.log_metric(f"{split_name}_loss", metrics["loss"])
+            mlflow.log_metric(f"{split_name}_cer", metrics["cer"])
+            mlflow.log_metric(f"{split_name}_wer", metrics["wer"])
+
+            console.print(
+                f"split={split_name}: loss={metrics['loss']:.4f} "
+                f"CER={metrics['cer']:.4f} WER={metrics['wer']:.4f}"
+            )
+
+    def infer_trocr(self, *overrides: str) -> None:
+        cfg = load_cfg("infer_trocr", overrides=list(overrides))
+
+        ckpt_path = Path(cfg.infer.checkpoint_path)
+        if not ckpt_path.exists():
+            raise FileNotFoundError(f"Checkpoint directory not found at {ckpt_path}")
+
+        image_path = Path(cfg.infer.image_path)
+        if not image_path.exists():
+            raise FileNotFoundError(f"Image not found at {image_path}")
+
+        pred = trocr_infer_one(
+            checkpoint_path=ckpt_path,
+            image_path=image_path,
+            height=int(cfg.preprocess.height),
+            keep_aspect=bool(cfg.preprocess.keep_aspect),
+            pad_value=int(cfg.preprocess.pad_value),
+            device_str=str(cfg.infer.device),
+            num_beams=int(cfg.generate.num_beams),
+            max_new_tokens=int(cfg.generate.max_new_tokens),
+            length_penalty=float(cfg.generate.length_penalty),
+            early_stopping=bool(cfg.generate.early_stopping),
+            no_repeat_ngram_size=int(cfg.generate.no_repeat_ngram_size),
         )
         console.print(f"{pred}")
 

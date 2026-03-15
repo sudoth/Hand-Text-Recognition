@@ -1,0 +1,16 @@
+device: cuda
+lr: 1e-5
+weight_decay: 0.01
+betas: [0.9, 0.999]
+eps: 1.0e-08
+
+max_epochs: 10
+patience: 3
+runs_dir: runs
+
+amp: true
+grad_accum_steps: 1
+max_grad_norm: 1.0
+
+scheduler: linear
+warmup_ratio: 0.1

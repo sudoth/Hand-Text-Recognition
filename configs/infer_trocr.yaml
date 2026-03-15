@@ -1,0 +1,16 @@
+defaults:
+  - _self_
+  - preprocess: default
+  - mlflow: local
+
+infer:
+  device: cuda
+  checkpoint_path: runs/trocr/best
+  image_path: ""
+
+generate:
+  num_beams: 4
+  max_new_tokens: 128
+  length_penalty: 1.0
+  early_stopping: true
+  no_repeat_ngram_size: 0
