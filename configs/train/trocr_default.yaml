@@ -12,5 +12,11 @@ amp: true
 grad_accum_steps: 1
 max_grad_norm: 1.0
 
-scheduler: linear
+scheduler:
+  enabled: true
+  name: cosine
+  t_max: ${train.max_epochs}
+  eta_min: 1e-6
+
+# Legacy field for string-based scheduler configs (kept for backward compatibility).
 warmup_ratio: 0.1

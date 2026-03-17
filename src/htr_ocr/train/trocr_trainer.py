@@ -45,6 +45,47 @@ def _set_encoder_trainable(model: VisionEncoderDecoderModel, trainable: bool) ->
         p.requires_grad = trainable
 
 
+def _build_scheduler(
+    cfg,
+    optimizer: torch.optim.Optimizer,
+    *,
+    max_epochs: int,
+    total_train_steps: int,
+    warmup_steps: int,
+) -> tuple[object | None, str]:
+    scheduler_cfg = getattr(cfg.train, "scheduler", None)
+
+    # New format (analogous to vt-ctc):
+    # train.scheduler.enabled/name/t_max/eta_min
+    if scheduler_cfg is not None and hasattr(scheduler_cfg, "name"):
+        if not bool(getattr(scheduler_cfg, "enabled", True)):
+            return None, "none"
+
+        scheduler_name = str(getattr(scheduler_cfg, "name", "cosine")).lower()
+        if scheduler_name == "cosine":
+            t_max = max(1, int(getattr(scheduler_cfg, "t_max", max_epochs)))
+            eta_min = float(getattr(scheduler_cfg, "eta_min", 0.0))
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=t_max,
+                eta_min=eta_min,
+            )
+            return scheduler, "epoch"
+
+        raise ValueError(f"Unknown train.scheduler.name={scheduler_name}")
+
+    # Legacy format:
+    # train.scheduler: linear
+    scheduler_name = str(scheduler_cfg) if scheduler_cfg is not None else "linear"
+    scheduler = get_scheduler(
+        name=scheduler_name,
+        optimizer=optimizer,
+        num_warmup_steps=warmup_steps,
+        num_training_steps=total_train_steps,
+    )
+    return scheduler, "step"
+
+
 def make_dataloader(cfg, split: str, processor: TrOCRProcessor) -> DataLoader:
     processed_dir = Path(cfg.data.processed_dir)
     csv_path = processed_dir / f"{split}.csv"
@@ -147,11 +188,12 @@ def train_trocr(cfg) -> TrainResult:
     total_train_steps = int(cfg.train.max_epochs) * max(1, (steps_per_epoch + grad_accum_steps - 1) // grad_accum_steps)
     warmup_steps = int(float(cfg.train.warmup_ratio) * total_train_steps)
 
-    scheduler = get_scheduler(
-        name=str(cfg.train.scheduler),
-        optimizer=optimizer,
-        num_warmup_steps=warmup_steps,
-        num_training_steps=total_train_steps,
+    scheduler, scheduler_step_mode = _build_scheduler(
+        cfg,
+        optimizer,
+        max_epochs=int(cfg.train.max_epochs),
+        total_train_steps=total_train_steps,
+        warmup_steps=warmup_steps,
     )
 
     use_amp = bool(cfg.train.amp) and device.type == "cuda"
@@ -177,11 +219,12 @@ def train_trocr(cfg) -> TrainResult:
                 betas=(float(cfg.train.betas[0]), float(cfg.train.betas[1])),
                 eps=float(cfg.train.eps),
             )
-            scheduler = get_scheduler(
-                name=str(cfg.train.scheduler),
-                optimizer=optimizer,
-                num_warmup_steps=warmup_steps,
-                num_training_steps=total_train_steps,
+            scheduler, scheduler_step_mode = _build_scheduler(
+                cfg,
+                optimizer,
+                max_epochs=int(cfg.train.max_epochs),
+                total_train_steps=total_train_steps,
+                warmup_steps=warmup_steps,
             )
 
         model.train()
@@ -210,7 +253,8 @@ def train_trocr(cfg) -> TrainResult:
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad(set_to_none=True)
-                scheduler.step()
+                if scheduler is not None and scheduler_step_mode == "step":
+                    scheduler.step()
 
             epoch_loss += float(loss.item()) * bs
             seen += bs
@@ -223,6 +267,10 @@ def train_trocr(cfg) -> TrainResult:
         mlflow.log_metric("val_loss", val_metrics["loss"], step=epoch)
         mlflow.log_metric("val_cer", val_metrics["cer"], step=epoch)
         mlflow.log_metric("val_wer", val_metrics["wer"], step=epoch)
+        mlflow.log_metric("lr", float(optimizer.param_groups[0]["lr"]), step=epoch)
+
+        if scheduler is not None and scheduler_step_mode == "epoch":
+            scheduler.step()
 
         model.save_pretrained(last_dir)
         processor.save_pretrained(last_dir)
