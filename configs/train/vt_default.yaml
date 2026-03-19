@@ -25,3 +25,5 @@ sam:
   enabled: true
   rho: 0.05
   adaptive: false
+
+log_checkpoint_to_mlflow: true

@@ -17,6 +17,7 @@ from htr_ocr.data.trocr_dataset import TrOCRLineDataset, build_trocr_collate
 from htr_ocr.data.transforms import make_image_transform
 from htr_ocr.utils.io import ensure_dir
 from htr_ocr.utils.metrics import cer, wer
+from htr_ocr.utils.repro import seed_everything
 
 
 @dataclass
@@ -155,6 +156,7 @@ def evaluate(model, processor, dl, device: torch.device, generate_cfg) -> dict[s
 
 
 def train_trocr(cfg) -> TrainResult:
+    seed_everything(int(cfg.train.seed), deterministic=bool(getattr(cfg.train, "deterministic", True)))
     device = torch.device(cfg.train.device if torch.cuda.is_available() else "cpu")
 
     processor = TrOCRProcessor.from_pretrained(str(cfg.model.pretrained_name))
@@ -281,6 +283,8 @@ def train_trocr(cfg) -> TrainResult:
             best_val_wer = val_metrics["wer"]
             model.save_pretrained(best_dir)
             processor.save_pretrained(best_dir)
+            if bool(getattr(cfg.train, "log_checkpoint_to_mlflow", True)):
+                mlflow.log_artifacts(str(best_dir), artifact_path="checkpoints/best")
             bad_epochs = 0
         else:
             bad_epochs += 1

@@ -1,3 +1,5 @@
+seed: 42
+deterministic: true
 device: cuda
 lr: 1e-5
 weight_decay: 0.01
@@ -20,3 +22,5 @@ scheduler:
 
 # Legacy field for string-based scheduler configs (kept for backward compatibility).
 warmup_ratio: 0.1
+
+log_checkpoint_to_mlflow: true
