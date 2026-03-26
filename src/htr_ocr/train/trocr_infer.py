@@ -6,6 +6,7 @@ from PIL import Image
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
 from htr_ocr.data.transforms import make_image_transform
+from htr_ocr.train.trocr_common import fix_trocr_sinusoidal_positional_weights
 
 
 def load_checkpoint(path: Path, device: torch.device) -> Tuple[VisionEncoderDecoderModel, TrOCRProcessor]:
@@ -17,6 +18,7 @@ def load_checkpoint(path: Path, device: torch.device) -> Tuple[VisionEncoderDeco
         str(path),
         use_safetensors=True,
     ).to(device)
+    fix_trocr_sinusoidal_positional_weights(model, device)
     model.eval()
     return model, processor
 

@@ -15,6 +15,7 @@ from transformers import (
 
 from htr_ocr.data.trocr_dataset import TrOCRLineDataset, build_trocr_collate
 from htr_ocr.data.transforms import make_image_transform
+from htr_ocr.train.trocr_common import fix_trocr_sinusoidal_positional_weights
 from htr_ocr.utils.io import ensure_dir
 from htr_ocr.utils.metrics import cer, wer
 from htr_ocr.utils.repro import seed_everything
@@ -164,6 +165,7 @@ def train_trocr(cfg) -> TrainResult:
         str(cfg.model.pretrained_name),
         use_safetensors=True,
     ).to(device)
+    fix_trocr_sinusoidal_positional_weights(model, device)
 
     model.config.decoder_start_token_id = processor.tokenizer.cls_token_id
     model.config.pad_token_id = processor.tokenizer.pad_token_id
