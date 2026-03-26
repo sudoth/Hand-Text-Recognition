@@ -6,9 +6,9 @@ weight_decay: 0.01
 betas: [0.9, 0.999]
 eps: 1.0e-08
 
-max_epochs: 10
-patience: 3
-runs_dir: runs
+max_epochs: 37
+patience: 100
+runs_dir: runs/trocr
 
 amp: true
 grad_accum_steps: 1
@@ -19,8 +19,6 @@ scheduler:
   name: cosine
   t_max: ${train.max_epochs}
   eta_min: 1e-6
-
-# Legacy field for string-based scheduler configs (kept for backward compatibility).
 warmup_ratio: 0.1
 
 log_checkpoint_to_mlflow: true

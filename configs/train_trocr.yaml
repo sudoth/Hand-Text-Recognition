@@ -12,5 +12,5 @@ generate:
   num_beams: 1
   max_new_tokens: 128
   length_penalty: 1.0
-  early_stopping: false
+  early_stopping: true
   no_repeat_ngram_size: 0

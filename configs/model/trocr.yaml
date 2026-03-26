@@ -1,4 +1,4 @@
 name: trocr
-pretrained_name: microsoft/trocr-small-stage1
+pretrained_name: microsoft/trocr-base-stage1
 max_target_length: 128
 freeze_encoder_epochs: 0

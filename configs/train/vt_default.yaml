@@ -17,9 +17,9 @@ scheduler:
 
 max_epochs: 100
 patience: 100
-backbone_freeze_epochs: 5
+backbone_freeze_epochs: 0
 
-runs_dir: runs
+runs_dir: runs/vt
 
 sam:
   enabled: true
