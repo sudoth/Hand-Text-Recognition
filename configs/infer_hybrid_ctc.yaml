@@ -1,7 +1,7 @@
 defaults:
   - preprocess: default
   - decode: beam
-  - mlflow: default
+  - mlflow: local
   - _self_
 
 infer:

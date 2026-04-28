@@ -5,7 +5,7 @@ defaults:
   - preprocess: default
   - model: hybrid_ctc
   - decode: beam
-  - mlflow: default
+  - mlflow: local
 
 eval:
   device: cuda
