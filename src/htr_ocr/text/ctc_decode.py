@@ -122,39 +122,3 @@ def ctc_beam_search_batch(
             )
         )
     return preds
-
-
-def decode_batch(
-    log_probs: torch.Tensor,
-    tokenizer: CTCTokenizer,
-    *,
-    method: str = "greedy",
-    beam_width: int = 50,
-    topk: int = 20,
-) -> list[str]:
-    """Universal batch decoder for CTC models.
-
-    Args:
-        log_probs: Tensor [T, B, C]
-        tokenizer: CTC tokenizer
-        method: 'greedy' or 'beam'
-        beam_width: beam width for beam search
-        topk: top-k candidates per timestep for beam search
-
-    Returns:
-        list[str]: decoded strings for batch
-    """
-    method = str(method).lower().strip()
-
-    if method in {"greedy"}:
-        return ctc_greedy_decode_batch(log_probs, tokenizer)
-
-    if method in {"beam", "beem"}:
-        return ctc_beam_search_batch(
-            log_probs,
-            tokenizer,
-            beam_width=int(beam_width),
-            topk=int(topk),
-        )
-
-    raise ValueError(f"Unknown decode method: {method}")

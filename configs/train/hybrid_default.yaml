@@ -18,3 +18,6 @@ runs_dir: runs
 amp: true
 grad_accum_steps: 1
 max_grad_norm: 5.0
+
+log_checkpoint_to_mlflow: true
+log_last_checkpoint_to_mlflow: false

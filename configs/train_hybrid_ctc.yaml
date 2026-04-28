@@ -5,6 +5,6 @@ defaults:
   - preprocess: default
   - model: hybrid_ctc
   - train: hybrid_default
-  - decode: beam
+  - decode: greedy
   - augment: paper
   - mlflow: local

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,6 +5,7 @@ from pathlib import Path
 import mlflow
 import torch
 import torch.nn as nn
+from omegaconf import OmegaConf
 from torch.nn.utils import clip_grad_norm_
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
@@ -17,8 +16,8 @@ from htr_ocr.data.dataset import IamLineDataset
 from htr_ocr.data.samplers import BucketBatchSampler
 from htr_ocr.data.transforms import make_image_transform
 from htr_ocr.models.hybrid_ctc import HybridCTC
-from htr_ocr.text.ctc_decode import decode_batch
-from htr_ocr.text.ctc_tokenizer import CTCTokenizer, build_or_load_vocab
+from htr_ocr.text.ctc_decode import ctc_beam_search_batch, ctc_greedy_decode_batch
+from htr_ocr.text.ctc_tokenizer import CTCTokenizer, build_or_load_vocab_ctc
 from htr_ocr.utils.io import ensure_dir
 from htr_ocr.utils.metrics import cer, wer
 
@@ -35,6 +34,23 @@ def _ctc_prepare_targets(tokenizer: CTCTokenizer, texts: list[str]) -> tuple[tor
     lengths = torch.tensor([len(x) for x in ids], dtype=torch.long)
     targets = torch.cat(ids, dim=0) if ids else torch.empty((0,), dtype=torch.long)
     return targets, lengths
+
+
+def _decode_batch(log_probs: torch.Tensor, tokenizer: CTCTokenizer, decode_cfg) -> list[str]:
+    method = str(getattr(decode_cfg, "method", "greedy")).lower()
+
+    if method == "greedy":
+        return ctc_greedy_decode_batch(log_probs, tokenizer)
+
+    if method == "beam":
+        return ctc_beam_search_batch(
+            log_probs,
+            tokenizer,
+            beam_width=int(getattr(decode_cfg, "beam_width", 50)),
+            topk=int(getattr(decode_cfg, "topk", 20)),
+        )
+
+    raise ValueError(f"Unknown decode method: {method}")
 
 
 def _build_transform(cfg, is_train: bool):
@@ -125,6 +141,19 @@ def _make_scheduler(optimizer, cfg, total_steps: int):
     return LambdaLR(optimizer, lr_lambda=_lr_lambda)
 
 
+def _build_checkpoint_payload(model: HybridCTC, tokenizer: CTCTokenizer, cfg) -> dict:
+    return {
+        "model_state": model.state_dict(),
+        "tokenizer": {
+            "id2char": tokenizer.id2char,
+        },
+        "cfg": {
+            "model": OmegaConf.to_container(cfg.model, resolve=True),
+            "preprocess": OmegaConf.to_container(cfg.preprocess, resolve=True),
+        },
+    }
+
+
 @torch.inference_mode()
 def evaluate(model: HybridCTC, dl: DataLoader, tokenizer: CTCTokenizer, device: torch.device, decode_cfg) -> dict[str, float]:
     model.eval()
@@ -151,14 +180,7 @@ def evaluate(model: HybridCTC, dl: DataLoader, tokenizer: CTCTokenizer, device: 
         target_lengths = target_lengths.to(device)
 
         loss = ctc_loss(log_probs, targets, input_lengths, target_lengths)
-
-        preds = decode_batch(
-            log_probs=log_probs,
-            tokenizer=tokenizer,
-            method=str(getattr(decode_cfg, "method", "greedy")),
-            beam_width=int(getattr(decode_cfg, "beam_width", 50)),
-            topk=int(getattr(decode_cfg, "topk", 20)),
-        )
+        preds = _decode_batch(log_probs, tokenizer, decode_cfg)
 
         bs = len(texts)
         total_loss += float(loss.item()) * bs
@@ -175,7 +197,7 @@ def evaluate(model: HybridCTC, dl: DataLoader, tokenizer: CTCTokenizer, device: 
 
 def train_hybrid_ctc(cfg) -> TrainResult:
     device = torch.device(cfg.train.device if torch.cuda.is_available() else "cpu")
-    tokenizer = build_or_load_vocab(cfg)
+    tokenizer = build_or_load_vocab_ctc(cfg)
 
     model = HybridCTC(
         vocab_size=tokenizer.vocab_size,
@@ -214,20 +236,12 @@ def train_hybrid_ctc(cfg) -> TrainResult:
     best_path = run_dir / "best.pt"
     last_path = run_dir / "last.pt"
 
-    model_cfg = {
-        "cnn_out_channels": int(cfg.model.cnn_out_channels),
-        "lstm_hidden": int(cfg.model.lstm_hidden),
-        "lstm_layers": int(cfg.model.lstm_layers),
-        "transformer_dim": int(cfg.model.transformer_dim),
-        "transformer_layers": int(cfg.model.transformer_layers),
-        "n_heads": int(cfg.model.n_heads),
-        "ffn_dim": int(cfg.model.ffn_dim),
-        "dropout": float(cfg.model.dropout),
-    }
-
     best_val_cer = float("inf")
     best_val_wer = float("inf")
     bad_epochs = 0
+
+    log_ckpt_to_mlflow = bool(getattr(cfg.train, "log_checkpoint_to_mlflow", True))
+    log_last_ckpt_to_mlflow = bool(getattr(cfg.train, "log_last_checkpoint_to_mlflow", False))
 
     for epoch in range(1, int(cfg.train.max_epochs) + 1):
         model.train()
@@ -283,27 +297,23 @@ def train_hybrid_ctc(cfg) -> TrainResult:
         mlflow.log_metric("val_wer", val_metrics["wer"], step=epoch)
         mlflow.log_metric("lr", float(optimizer.param_groups[0]["lr"]), step=epoch)
 
-        torch.save(
-            {
-                "model": model.state_dict(),
-                "tokenizer": tokenizer.to_dict(),
-                "model_cfg": model_cfg,
-            },
-            last_path,
-        )
+        last_payload = _build_checkpoint_payload(model, tokenizer, cfg)
+        torch.save(last_payload, last_path)
+
+        if log_last_ckpt_to_mlflow:
+            mlflow.log_artifact(str(last_path), artifact_path="checkpoints")
 
         improved = val_metrics["cer"] < best_val_cer
         if improved:
             best_val_cer = val_metrics["cer"]
             best_val_wer = val_metrics["wer"]
-            torch.save(
-                {
-                    "model": model.state_dict(),
-                    "tokenizer": tokenizer.to_dict(),
-                    "model_cfg": model_cfg,
-                },
-                best_path,
-            )
+
+            best_payload = _build_checkpoint_payload(model, tokenizer, cfg)
+            torch.save(best_payload, best_path)
+
+            if log_ckpt_to_mlflow:
+                mlflow.log_artifact(str(best_path), artifact_path="checkpoints")
+
             bad_epochs = 0
         else:
             bad_epochs += 1
